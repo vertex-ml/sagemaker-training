@@ -104,7 +104,7 @@ jobs:
       # Actual training job for the best performing combination from previous runs
       - name: Train optimized model
         id: optimized-training
-        uses: your-org/sagemaker-training-action@v1
+        uses: vertex-ml/sagemaker-training
         with:
           job-name: optimized-${{ matrix.experiment.name }}-${{ github.run_number }}
           algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest

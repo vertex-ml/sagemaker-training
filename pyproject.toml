@@ -52,7 +52,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/vertex-ml/sagemaker-training"
-Documentation = "https://your-org.github.io/sagemaker-training-action/"
+Documentation = "https://github.com/vertex-ml/sagemaker-training"
 Repository = "https://github.com/vertex-ml/sagemaker-training"
 "Bug Tracker" = "https://github.com/vertex-ml/sagemaker-training/issues"
 Changelog = "https://github.com/vertex-ml/sagemaker-training/releases"

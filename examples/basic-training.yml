@@ -25,7 +25,7 @@ jobs:
       
       - name: Train XGBoost Model
         id: training
-        uses: your-org/sagemaker-training-action@v1
+        uses: vertex-ml/sagemaker-training
         with:
           job-name: xgboost-basic-${{ github.run_number }}
           algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest

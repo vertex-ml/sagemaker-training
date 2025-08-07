@@ -55,7 +55,7 @@ jobs:
           aws-region: us-east-1
       
       - name: Train SageMaker Model
-        uses: your-org/sagemaker-training-action@v1
+        uses: vertex-ml/sagemaker-training
         with:
           job-name: my-training-job-${{ github.run_number }}
           algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest
@@ -131,7 +131,7 @@ jobs:
 
 ```yaml
 - name: Train XGBoost Model
-  uses: your-org/sagemaker-training-action@v1
+  uses: vertex-ml/sagemaker-training
   with:
     job-name: xgboost-model-${{ github.sha }}
     algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest
@@ -165,7 +165,7 @@ jobs:
 
 ```yaml
 - name: Train Custom Algorithm
-  uses: your-org/sagemaker-training-action@v1
+  uses: vertex-ml/sagemaker-training
   with:
     job-name: custom-algorithm-${{ github.run_number }}
     algorithm-specification: ${{ secrets.ECR_REGISTRY }}/my-algorithm:${{ github.sha }}
@@ -214,7 +214,7 @@ jobs:
 
 ```yaml
 - name: Distributed Training
-  uses: your-org/sagemaker-training-action@v1
+  uses: vertex-ml/sagemaker-training
   with:
     job-name: distributed-training-${{ github.run_number }}
     algorithm-specification: 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:1.8.1-gpu-py3
@@ -252,7 +252,7 @@ jobs:
 
 ```yaml
 - name: Secure VPC Training
-  uses: your-org/sagemaker-training-action@v1
+  uses: vertex-ml/sagemaker-training
   with:
     job-name: secure-training-${{ github.run_number }}
     algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/scikit-learn:latest
@@ -298,7 +298,7 @@ steps:
       aws-region: us-east-1
   
   - name: Train Model
-    uses: your-org/sagemaker-training-action@v1
+    uses: vertex-ml/sagemaker-training
     with:
       # ... other inputs
 ```
@@ -309,7 +309,7 @@ Store AWS credentials as repository secrets:
 
 ```yaml
 - name: Train Model
-  uses: your-org/sagemaker-training-action@v1
+  uses: vertex-ml/sagemaker-training
   with:
     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -416,7 +416,7 @@ We use [Semantic Versioning](http://semver.org/) for versioning. For available v
 
 ## 📞 Support
 
-- **Documentation**: [GitHub Pages](https://your-org.github.io/sagemaker-training-action/)
+- **Documentation**: [GitHub Pages](https://github.com/vertex-ml/sagemaker-training)
 - **Issues**: [GitHub Issues](https://github.com/vertex-ml/sagemaker-training/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/vertex-ml/sagemaker-training/discussions)
 

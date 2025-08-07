@@ -172,7 +172,7 @@ jobs:
           
           ```yaml
           - name: Train ML Model
-            uses: your-org/sagemaker-training-action@v1
+            uses: vertex-ml/sagemaker-training
             with:
               job-name: my-training-job
               algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest

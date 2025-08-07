@@ -57,7 +57,7 @@ jobs:
       
       - name: Train model with custom container
         id: training
-        uses: your-org/sagemaker-training-action@v1
+        uses: vertex-ml/sagemaker-training
         with:
           job-name: custom-model-${{ github.run_number }}-${{ github.sha }}
           algorithm-specification: ${{ steps.build-image.outputs.image }}
