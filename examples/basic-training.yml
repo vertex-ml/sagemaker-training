@@ -1,0 +1,114 @@
+name: Basic SageMaker Training
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: us-east-1
+          role-session-name: GitHubActions-SageMakerTraining
+      
+      - name: Train XGBoost Model
+        id: training
+        uses: your-org/sagemaker-training-action@v1
+        with:
+          job-name: xgboost-basic-${{ github.run_number }}
+          algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest
+          role-arn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
+          instance-type: ml.m5.large
+          instance-count: 1
+          volume-size: 30
+          max-runtime: 3600  # 1 hour
+          
+          # Input data configuration
+          input-data-config: |
+            [{
+              "ChannelName": "training",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-bucket/datasets/iris/training/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "text/csv",
+              "CompressionType": "None",
+              "InputMode": "File"
+            }]
+          
+          # Output configuration
+          output-data-config: |
+            {
+              "S3OutputPath": "s3://my-ml-bucket/models/iris-xgboost/"
+            }
+          
+          # Hyperparameters
+          hyperparameters: |
+            {
+              "max_depth": "5",
+              "eta": "0.1",
+              "gamma": "4",
+              "min_child_weight": "6",
+              "subsample": "0.7",
+              "num_round": "50",
+              "objective": "multi:softmax",
+              "num_class": "3"
+            }
+          
+          # Environment variables
+          environment: |
+            {
+              "SAGEMAKER_PROGRAM": "train.py",
+              "SAGEMAKER_SUBMIT_DIRECTORY": "/opt/ml/code"
+            }
+          
+          # Resource tags
+          tags: |
+            {
+              "Project": "IrisClassification",
+              "Environment": "Development",
+              "Repository": "${{ github.repository }}",
+              "CommitSHA": "${{ github.sha }}",
+              "GitHubActor": "${{ github.actor }}"
+            }
+          
+          # Job control
+          wait-for-completion: true
+          check-interval: 30
+      
+      - name: Output training results
+        run: |
+          echo "Training job completed successfully!"
+          echo "Job Name: ${{ steps.training.outputs.job-name }}"
+          echo "Job ARN: ${{ steps.training.outputs.job-arn }}"
+          echo "Status: ${{ steps.training.outputs.job-status }}"
+          echo "Model Artifacts: ${{ steps.training.outputs.model-artifacts }}"
+      
+      - name: Create deployment artifact
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          echo "Model training completed successfully" > deployment-ready.txt
+          echo "Model S3 location: ${{ steps.training.outputs.model-artifacts }}" >> deployment-ready.txt
+          echo "Training job: ${{ steps.training.outputs.job-name }}" >> deployment-ready.txt
+      
+      - name: Upload deployment artifact
+        if: steps.training.outputs.job-status == 'Completed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-deployment-info
+          path: deployment-ready.txt

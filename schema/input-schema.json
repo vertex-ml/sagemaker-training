@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/your-org/sagemaker-training-action/schema/input-schema.json",
+  "title": "SageMaker Training Action Input Schema",
+  "description": "Schema for validating inputs to the SageMaker Training GitHub Action",
+  "type": "object",
+  "properties": {
+    "aws-access-key-id": {
+      "type": "string",
+      "description": "AWS Access Key ID",
+      "minLength": 16,
+      "maxLength": 32,
+      "pattern": "^[A-Z0-9]+$"
+    },
+    "aws-secret-access-key": {
+      "type": "string",
+      "description": "AWS Secret Access Key",
+      "minLength": 40,
+      "maxLength": 40
+    },
+    "aws-session-token": {
+      "type": "string",
+      "description": "AWS Session Token"
+    },
+    "aws-region": {
+      "type": "string",
+      "description": "AWS Region",
+      "pattern": "^[a-z0-9-]+$",
+      "examples": ["us-east-1", "us-west-2", "eu-west-1"]
+    },
+    "role-to-assume": {
+      "type": "string",
+      "description": "AWS IAM Role ARN to assume",
+      "pattern": "^arn:aws(-[^:]*)?:iam::[0-9]{12}:role/.+$"
+    },
+    "job-name": {
+      "type": "string",
+      "description": "SageMaker training job name",
+      "pattern": "^[a-zA-Z0-9\\-]{1,63}$",
+      "minLength": 1,
+      "maxLength": 63
+    },
+    "algorithm-specification": {
+      "type": "string",
+      "description": "Training image URI or built-in algorithm name",
+      "minLength": 1
+    },
+    "role-arn": {
+      "type": "string",
+      "description": "SageMaker execution role ARN",
+      "pattern": "^arn:aws(-[^:]*)?:iam::[0-9]{12}:role/.+$"
+    },
+    "instance-type": {
+      "type": "string",
+      "description": "ML compute instance type",
+      "pattern": "^ml\\.[a-z0-9]+\\.(nano|micro|small|medium|large|xlarge|[0-9]+xlarge)$",
+      "default": "ml.m5.large"
+    },
+    "instance-count": {
+      "type": "integer",
+      "description": "Number of ML compute instances",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 1
+    },
+    "volume-size": {
+      "type": "integer",
+      "description": "Size of ML storage volume in GB",
+      "minimum": 1,
+      "maximum": 16384,
+      "default": 30
+    },
+    "max-runtime": {
+      "type": "integer",
+      "description": "Maximum runtime in seconds",
+      "minimum": 1,
+      "maximum": 432000,
+      "default": 86400
+    },
+    "input-data-config": {
+      "type": "string",
+      "description": "JSON string of input data configuration",
+      "contentMediaType": "application/json"
+    },
+    "output-data-config": {
+      "type": "string",
+      "description": "JSON string of output data configuration",
+      "contentMediaType": "application/json"
+    },
+    "hyperparameters": {
+      "type": "string",
+      "description": "JSON string of hyperparameters",
+      "contentMediaType": "application/json",
+      "default": "{}"
+    },
+    "environment": {
+      "type": "string",
+      "description": "JSON string of environment variables",
+      "contentMediaType": "application/json",
+      "default": "{}"
+    },
+    "vpc-config": {
+      "type": "string",
+      "description": "JSON string of VPC configuration",
+      "contentMediaType": "application/json"
+    },
+    "tags": {
+      "type": "string",
+      "description": "JSON string of resource tags",
+      "contentMediaType": "application/json",
+      "default": "{}"
+    },
+    "wait-for-completion": {
+      "type": "string",
+      "description": "Wait for training job to complete",
+      "enum": ["true", "false"],
+      "default": "true"
+    },
+    "check-interval": {
+      "type": "integer",
+      "description": "Status check interval in seconds",
+      "minimum": 10,
+      "maximum": 3600,
+      "default": 60
+    }
+  },
+  "required": [
+    "job-name",
+    "algorithm-specification",
+    "role-arn",
+    "input-data-config",
+    "output-data-config"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "InputDataConfig": {
+      "type": "array",
+      "description": "Array of input data channel configurations",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "ChannelName": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9\\-_]{1,64}$",
+            "description": "Name of the input data channel"
+          },
+          "DataSource": {
+            "type": "object",
+            "properties": {
+              "S3DataSource": {
+                "type": "object",
+                "properties": {
+                  "S3DataType": {
+                    "type": "string",
+                    "enum": ["ManifestFile", "S3Prefix", "AugmentedManifestFile"]
+                  },
+                  "S3Uri": {
+                    "type": "string",
+                    "pattern": "^s3://[a-zA-Z0-9.\\-_]+(/.*)?$",
+                    "description": "S3 URI of the input data"
+                  },
+                  "S3DataDistributionType": {
+                    "type": "string",
+                    "enum": ["FullyReplicated", "ShardedByS3Key"]
+                  }
+                },
+                "required": ["S3DataType", "S3Uri"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["S3DataSource"],
+            "additionalProperties": false
+          },
+          "ContentType": {
+            "type": "string",
+            "description": "MIME type of the input data"
+          },
+          "CompressionType": {
+            "type": "string",
+            "enum": ["None", "Gzip"]
+          },
+          "RecordWrapperType": {
+            "type": "string",
+            "enum": ["None", "RecordIO"]
+          },
+          "InputMode": {
+            "type": "string",
+            "enum": ["Pipe", "File"]
+          }
+        },
+        "required": ["ChannelName", "DataSource"],
+        "additionalProperties": false
+      }
+    },
+    "OutputDataConfig": {
+      "type": "object",
+      "description": "Output data configuration",
+      "properties": {
+        "S3OutputPath": {
+          "type": "string",
+          "pattern": "^s3://[a-zA-Z0-9.\\-_]+(/.*)?$",
+          "description": "S3 URI for storing output data"
+        },
+        "KmsKeyId": {
+          "type": "string",
+          "description": "KMS key ID for output data encryption"
+        }
+      },
+      "required": ["S3OutputPath"],
+      "additionalProperties": false
+    },
+    "VpcConfig": {
+      "type": "object",
+      "description": "VPC configuration for training job",
+      "properties": {
+        "SecurityGroupIds": {
+          "type": "array",
+          "description": "Security group IDs",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "pattern": "^sg-[0-9a-f]{8,17}$"
+          }
+        },
+        "Subnets": {
+          "type": "array",
+          "description": "Subnet IDs",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^subnet-[0-9a-f]{8,17}$"
+          }
+        }
+      },
+      "required": ["SecurityGroupIds", "Subnets"],
+      "additionalProperties": false
+    }
+  }
+}

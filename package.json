@@ -1,0 +1,32 @@
+{
+  "name": "sagemaker-training-action",
+  "version": "1.0.0",
+  "description": "GitHub Action to setup and trigger SageMaker training jobs",
+  "main": "src/main.py",
+  "scripts": {
+    "test": "pytest tests/",
+    "lint": "flake8 src/ tests/",
+    "format": "black src/ tests/",
+    "type-check": "mypy src/",
+    "validate": "python -m jsonschema -i examples/input.json schema/input-schema.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/sagemaker-training-action"
+  },
+  "keywords": [
+    "github-action",
+    "sagemaker",
+    "aws",
+    "machine-learning",
+    "training",
+    "mlops"
+  ],
+  "author": "Your Organization",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {},
+  "engines": {
+    "python": ">=3.8"
+  }
+}

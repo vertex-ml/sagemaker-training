@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run tests
+        run: |
+          pytest tests/ -v
+      
+      - name: Test Docker build
+        run: |
+          docker build -t sagemaker-training-action:${{ github.ref_name }} .
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major=$(echo $VERSION | cut -d. -f1)" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Changes in ${{ steps.version.outputs.version }}
+            
+            ### Features
+            - SageMaker training job orchestration
+            - Comprehensive input validation
+            - Support for custom containers and built-in algorithms
+            - VPC and security group configuration
+            - Hyperparameter optimization support
+            - Real-time job monitoring and logging
+            
+            ### Authentication
+            - OIDC authentication support
+            - IAM role assumption
+            - AWS credentials support
+            
+            ### Documentation
+            - Complete usage examples
+            - Troubleshooting guide
+            - API reference
+            
+            See the [README](README.md) for detailed usage instructions.
+          draft: false
+          prerelease: false
+      
+      - name: Update major version tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -fa ${{ steps.version.outputs.major }} -m "Update ${{ steps.version.outputs.major }} tag"
+          git push origin ${{ steps.version.outputs.major }} --force
+
+  marketplace:
+    needs: [test, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Validate action.yml
+        run: |
+          # Validate action.yml syntax
+          python -c "import yaml; yaml.safe_load(open('action.yml'))"
+          echo "✅ action.yml is valid"
+      
+      - name: Create marketplace assets
+        run: |
+          mkdir -p marketplace-assets
+          
+          # Create action icon
+          echo "Creating marketplace icon..."
+          # You would typically include a proper icon file here
+          
+          # Validate README for marketplace
+          echo "Validating README for marketplace..."
+          if grep -q "marketplace" README.md; then
+            echo "✅ README contains marketplace information"
+          else
+            echo "⚠️  Consider adding marketplace badge to README"
+          fi
+      
+      - name: Check marketplace requirements
+        run: |
+          echo "Checking GitHub Marketplace requirements..."
+          
+          # Check required files
+          required_files=("action.yml" "README.md" "LICENSE")
+          for file in "${required_files[@]}"; do
+            if [[ -f "$file" ]]; then
+              echo "✅ $file exists"
+            else
+              echo "❌ $file is missing"
+              exit 1
+            fi
+          done
+          
+          # Validate action.yml structure
+          python -c "
+          import yaml
+          with open('action.yml') as f:
+              action = yaml.safe_load(f)
+          
+          required_keys = ['name', 'description', 'inputs', 'outputs', 'runs']
+          for key in required_keys:
+              if key not in action:
+                  print(f'❌ Missing required key: {key}')
+                  exit(1)
+              else:
+                  print(f'✅ {key} is present')
+          
+          if 'branding' in action:
+              print('✅ Branding information included')
+          else:
+              print('⚠️  Consider adding branding for better marketplace presence')
+          "
+      
+      - name: Generate marketplace description
+        run: |
+          cat << 'EOF' > MARKETPLACE_DESCRIPTION.md
+          # SageMaker Training Action
+          
+          Automate Amazon SageMaker training jobs directly from your GitHub workflows with comprehensive MLOps integration.
+          
+          ## Key Features
+          
+          ✅ **Easy Setup** - Simple configuration with sensible defaults  
+          ✅ **Flexible Auth** - OIDC, IAM roles, and AWS credentials support  
+          ✅ **Input Validation** - Built-in validation with clear error messages  
+          ✅ **Real-time Monitoring** - Job status tracking and logging  
+          ✅ **VPC Support** - Secure training in private networks  
+          ✅ **Custom Containers** - Support for both built-in and custom algorithms  
+          ✅ **Multi-Instance** - Distributed training across multiple instances  
+          
+          ## Quick Start
+          
+          ```yaml
+          - name: Train ML Model
+            uses: your-org/sagemaker-training-action@v1
+            with:
+              job-name: my-training-job
+              algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest
+              role-arn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
+              input-data-config: '[{"ChannelName": "training", "DataSource": {"S3DataSource": {"S3DataType": "S3Prefix", "S3Uri": "s3://my-bucket/data/"}}}]'
+              output-data-config: '{"S3OutputPath": "s3://my-bucket/output/"}'
+          ```
+          
+          Perfect for ML teams implementing CI/CD pipelines with automated model training, hyperparameter optimization, and model deployment workflows.
+          EOF
+          
+          echo "Marketplace description generated"
+      
+      - name: Notify release completion
+        run: |
+          echo "🎉 Release ${{ steps.version.outputs.version }} completed successfully!"
+          echo "📦 Ready for GitHub Marketplace publication"
+          echo "🔗 Release URL: ${{ steps.create_release.outputs.html_url }}"

@@ -1,0 +1,637 @@
+name: Custom Python Model Training
+
+on:
+  push:
+    paths:
+      - 'ml-code/**'
+      - 'docker/**'
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Model name for training'
+        required: true
+        default: 'custom-sklearn-model'
+      data_path:
+        description: 'S3 path to training data'
+        required: true
+        default: 's3://my-ml-bucket/datasets/custom-data/'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: custom-python-training
+
+jobs:
+  build-and-train:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Prepare training code
+        run: |
+          # Create training directory structure
+          mkdir -p docker/code
+          
+          # Copy Python training code
+          cp -r ml-code/* docker/code/
+          
+          # Create requirements.txt if it doesn't exist
+          if [ ! -f docker/code/requirements.txt ]; then
+            cat > docker/code/requirements.txt << 'EOF'
+          scikit-learn==1.3.0
+          pandas==2.0.3
+          numpy==1.24.3
+          joblib==1.3.2
+          boto3==1.28.0
+          sagemaker-training==4.6.0
+          EOF
+          fi
+          
+          echo "Training code prepared"
+      
+      - name: Create custom training Dockerfile
+        run: |
+          cat > docker/Dockerfile << 'EOF'
+          FROM python:3.9-slim
+          
+          # Set environment variables
+          ENV PYTHONUNBUFFERED=1
+          ENV PYTHONDONTWRITEBYTECODE=1
+          
+          # Install system dependencies
+          RUN apt-get update && apt-get install -y \
+              build-essential \
+              && rm -rf /var/lib/apt/lists/*
+          
+          # Set up the program in the image
+          COPY code/requirements.txt /opt/ml/code/requirements.txt
+          RUN pip install --no-cache-dir -r /opt/ml/code/requirements.txt
+          
+          # Copy training code
+          COPY code/ /opt/ml/code/
+          WORKDIR /opt/ml/code
+          
+          # Set the entry point for SageMaker
+          ENV SAGEMAKER_PROGRAM train.py
+          ENV PYTHONPATH="/opt/ml/code:$PYTHONPATH"
+          EOF
+      
+      - name: Create sample training script
+        run: |
+          cat > docker/code/train.py << 'EOF'
+          #!/usr/bin/env python3
+          
+          import argparse
+          import os
+          import pandas as pd
+          import numpy as np
+          import joblib
+          import json
+          from sklearn.ensemble import RandomForestClassifier
+          from sklearn.model_selection import train_test_split
+          from sklearn.metrics import accuracy_score, classification_report
+          import logging
+          
+          # Set up logging
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          def parse_args():
+              parser = argparse.ArgumentParser()
+              
+              # SageMaker specific arguments
+              parser.add_argument('--model-dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/model'))
+              parser.add_argument('--train', type=str, default=os.environ.get('SM_CHANNEL_TRAINING', '/opt/ml/input/data/training'))
+              parser.add_argument('--validation', type=str, default=os.environ.get('SM_CHANNEL_VALIDATION', '/opt/ml/input/data/validation'))
+              
+              # Model hyperparameters
+              parser.add_argument('--n-estimators', type=int, default=100)
+              parser.add_argument('--max-depth', type=int, default=10)
+              parser.add_argument('--min-samples-split', type=int, default=2)
+              parser.add_argument('--min-samples-leaf', type=int, default=1)
+              parser.add_argument('--random-state', type=int, default=42)
+              
+              # Custom parameters
+              parser.add_argument('--test-size', type=float, default=0.2)
+              parser.add_argument('--model-name', type=str, default='random_forest_model')
+              
+              return parser.parse_args()
+          
+          def load_data(data_path):
+              """Load training data from CSV files"""
+              logger.info(f"Loading data from {data_path}")
+              
+              # Handle multiple file formats
+              data_files = []
+              if os.path.isdir(data_path):
+                  for file in os.listdir(data_path):
+                      if file.endswith('.csv'):
+                          data_files.append(os.path.join(data_path, file))
+              else:
+                  data_files = [data_path]
+              
+              # Load and concatenate all CSV files
+              dataframes = []
+              for file in data_files:
+                  logger.info(f"Reading file: {file}")
+                  df = pd.read_csv(file)
+                  dataframes.append(df)
+              
+              if not dataframes:
+                  raise ValueError("No CSV files found in the training data path")
+              
+              data = pd.concat(dataframes, ignore_index=True)
+              logger.info(f"Loaded {len(data)} samples with {len(data.columns)} features")
+              
+              return data
+          
+          def preprocess_data(data):
+              """Basic data preprocessing"""
+              logger.info("Preprocessing data...")
+              
+              # Remove any rows with missing values
+              data_clean = data.dropna()
+              logger.info(f"Data shape after removing NAs: {data_clean.shape}")
+              
+              # Assume last column is the target
+              X = data_clean.iloc[:, :-1]
+              y = data_clean.iloc[:, -1]
+              
+              logger.info(f"Features shape: {X.shape}")
+              logger.info(f"Target shape: {y.shape}")
+              logger.info(f"Target classes: {y.unique()}")
+              
+              return X, y
+          
+          def train_model(X_train, y_train, args):
+              """Train the Random Forest model"""
+              logger.info("Training Random Forest model...")
+              
+              model = RandomForestClassifier(
+                  n_estimators=args.n_estimators,
+                  max_depth=args.max_depth,
+                  min_samples_split=args.min_samples_split,
+                  min_samples_leaf=args.min_samples_leaf,
+                  random_state=args.random_state,
+                  n_jobs=-1  # Use all available cores
+              )
+              
+              model.fit(X_train, y_train)
+              logger.info("Model training completed")
+              
+              return model
+          
+          def evaluate_model(model, X_test, y_test):
+              """Evaluate model performance"""
+              logger.info("Evaluating model...")
+              
+              y_pred = model.predict(X_test)
+              accuracy = accuracy_score(y_test, y_pred)
+              
+              logger.info(f"Test Accuracy: {accuracy:.4f}")
+              logger.info("Classification Report:")
+              logger.info(classification_report(y_test, y_pred))
+              
+              # Feature importance
+              if hasattr(model, 'feature_importances_'):
+                  feature_importance = model.feature_importances_
+                  logger.info("Top 10 Feature Importances:")
+                  for i, importance in enumerate(feature_importance[:10]):
+                      logger.info(f"Feature {i}: {importance:.4f}")
+              
+              return {
+                  'accuracy': accuracy,
+                  'feature_importances': feature_importance.tolist() if hasattr(model, 'feature_importances_') else None
+              }
+          
+          def save_model(model, model_dir, model_name, metrics):
+              """Save the trained model and metadata"""
+              logger.info(f"Saving model to {model_dir}")
+              
+              # Save the model
+              model_path = os.path.join(model_dir, f"{model_name}.joblib")
+              joblib.dump(model, model_path)
+              logger.info(f"Model saved to {model_path}")
+              
+              # Save model metadata
+              metadata = {
+                  'model_name': model_name,
+                  'model_type': 'RandomForestClassifier',
+                  'scikit_learn_version': '1.3.0',
+                  'metrics': metrics,
+                  'hyperparameters': {
+                      'n_estimators': model.n_estimators,
+                      'max_depth': model.max_depth,
+                      'min_samples_split': model.min_samples_split,
+                      'min_samples_leaf': model.min_samples_leaf,
+                      'random_state': model.random_state
+                  }
+              }
+              
+              metadata_path = os.path.join(model_dir, 'model_metadata.json')
+              with open(metadata_path, 'w') as f:
+                  json.dump(metadata, f, indent=2)
+              
+              logger.info(f"Model metadata saved to {metadata_path}")
+          
+          def main():
+              args = parse_args()
+              
+              logger.info("Starting custom Python model training")
+              logger.info(f"Arguments: {vars(args)}")
+              
+              try:
+                  # Load training data
+                  train_data = load_data(args.train)
+                  
+                  # Preprocess data
+                  X, y = preprocess_data(train_data)
+                  
+                  # Split data if validation data is not provided separately
+                  if not os.path.exists(args.validation):
+                      logger.info("No separate validation data provided, splitting training data")
+                      X_train, X_test, y_train, y_test = train_test_split(
+                          X, y, test_size=args.test_size, random_state=args.random_state, stratify=y
+                      )
+                  else:
+                      logger.info("Using separate validation data")
+                      X_train, y_train = X, y
+                      val_data = load_data(args.validation)
+                      X_test, y_test = preprocess_data(val_data)
+                  
+                  # Train model
+                  model = train_model(X_train, y_train, args)
+                  
+                  # Evaluate model
+                  metrics = evaluate_model(model, X_test, y_test)
+                  
+                  # Save model
+                  save_model(model, args.model_dir, args.model_name, metrics)
+                  
+                  logger.info("Training completed successfully!")
+                  
+              except Exception as e:
+                  logger.error(f"Training failed: {str(e)}")
+                  raise
+          
+          if __name__ == '__main__':
+              main()
+          EOF
+          
+          chmod +x docker/code/train.py
+      
+      - name: Create inference script
+        run: |
+          cat > docker/code/inference.py << 'EOF'
+          #!/usr/bin/env python3
+          
+          import os
+          import json
+          import joblib
+          import pandas as pd
+          import numpy as np
+          from io import StringIO
+          
+          # Global variables to hold the model
+          model = None
+          
+          def model_fn(model_dir):
+              """Load model from the model directory"""
+              global model
+              
+              # Find the model file
+              model_files = [f for f in os.listdir(model_dir) if f.endswith('.joblib')]
+              if not model_files:
+                  raise FileNotFoundError("No .joblib model file found")
+              
+              model_path = os.path.join(model_dir, model_files[0])
+              model = joblib.load(model_path)
+              
+              return model
+          
+          def input_fn(request_body, request_content_type):
+              """Parse input data for predictions"""
+              
+              if request_content_type == 'text/csv':
+                  # Handle CSV input
+                  df = pd.read_csv(StringIO(request_body))
+                  return df.values
+              elif request_content_type == 'application/json':
+                  # Handle JSON input
+                  input_data = json.loads(request_body)
+                  if isinstance(input_data, dict):
+                      # Single instance
+                      return np.array([list(input_data.values())])
+                  elif isinstance(input_data, list):
+                      # Multiple instances
+                      if all(isinstance(item, dict) for item in input_data):
+                          return np.array([list(item.values()) for item in input_data])
+                      else:
+                          return np.array(input_data)
+                  else:
+                      raise ValueError("Invalid JSON input format")
+              else:
+                  raise ValueError(f"Unsupported content type: {request_content_type}")
+          
+          def predict_fn(input_data, model):
+              """Make predictions using the loaded model"""
+              predictions = model.predict(input_data)
+              probabilities = model.predict_proba(input_data) if hasattr(model, 'predict_proba') else None
+              
+              return {
+                  'predictions': predictions.tolist(),
+                  'probabilities': probabilities.tolist() if probabilities is not None else None
+              }
+          
+          def output_fn(prediction, accept):
+              """Format the prediction output"""
+              
+              if accept == 'application/json':
+                  return json.dumps(prediction), accept
+              elif accept == 'text/csv':
+                  # Return only predictions as CSV
+                  predictions_df = pd.DataFrame({'prediction': prediction['predictions']})
+                  return predictions_df.to_csv(index=False), accept
+              else:
+                  raise ValueError(f"Unsupported accept type: {accept}")
+          EOF
+      
+      - name: Build and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Docker image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./docker/
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./docker/
+          
+          # Push to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "✅ Docker image built and pushed successfully"
+      
+      - name: Prepare sample training data
+        run: |
+          # Create sample dataset (Iris-like data)
+          python3 << 'EOF'
+          import pandas as pd
+          import numpy as np
+          from sklearn.datasets import make_classification
+          import boto3
+          from io import StringIO
+          
+          # Generate sample dataset
+          X, y = make_classification(
+              n_samples=1000,
+              n_features=10,
+              n_informative=5,
+              n_redundant=2,
+              n_classes=3,
+              random_state=42
+          )
+          
+          # Create DataFrame
+          feature_names = [f'feature_{i}' for i in range(X.shape[1])]
+          df = pd.DataFrame(X, columns=feature_names)
+          df['target'] = y
+          
+          # Split into train/validation
+          train_data = df.sample(frac=0.8, random_state=42)
+          val_data = df.drop(train_data.index)
+          
+          # Upload to S3 (simulate - you'd actually upload real data)
+          print("Sample data created:")
+          print(f"Training data shape: {train_data.shape}")
+          print(f"Validation data shape: {val_data.shape}")
+          print("In real scenario, upload this to S3")
+          
+          # Save locally for demo
+          train_data.to_csv('sample_train_data.csv', index=False)
+          val_data.to_csv('sample_val_data.csv', index=False)
+          EOF
+      
+      - name: Train custom Python model
+        id: training
+        uses: your-org/sagemaker-training-action@v1
+        with:
+          job-name: custom-python-${{ github.event.inputs.model_name || 'sklearn-model' }}-${{ github.run_number }}
+          algorithm-specification: ${{ steps.build-image.outputs.image }}
+          role-arn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
+          
+          # Instance configuration for custom Python training
+          instance-type: ml.m5.xlarge
+          instance-count: 1
+          volume-size: 50
+          max-runtime: 3600  # 1 hour
+          
+          # Data configuration
+          input-data-config: |
+            [{
+              "ChannelName": "training",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "${{ github.event.inputs.data_path || 's3://my-ml-bucket/datasets/custom-data/train/' }}",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "text/csv",
+              "InputMode": "File"
+            }, {
+              "ChannelName": "validation",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "${{ github.event.inputs.data_path || 's3://my-ml-bucket/datasets/custom-data/validation/' }}",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "text/csv",
+              "InputMode": "File"
+            }]
+          
+          output-data-config: |
+            {
+              "S3OutputPath": "s3://my-ml-bucket/models/custom-python/${{ github.event.inputs.model_name || 'sklearn-model' }}/"
+            }
+          
+          # Custom hyperparameters for our Python script
+          hyperparameters: |
+            {
+              "n-estimators": "150",
+              "max-depth": "15",
+              "min-samples-split": "5",
+              "min-samples-leaf": "2",
+              "test-size": "0.2",
+              "model-name": "${{ github.event.inputs.model_name || 'custom-sklearn-model' }}"
+            }
+          
+          # Environment variables for custom training
+          environment: |
+            {
+              "SAGEMAKER_PROGRAM": "train.py",
+              "SAGEMAKER_REQUIREMENTS": "requirements.txt",
+              "PYTHONPATH": "/opt/ml/code",
+              "MODEL_VERSION": "${{ github.sha }}",
+              "TRAINING_JOB_NAME": "custom-python-${{ github.event.inputs.model_name || 'sklearn-model' }}-${{ github.run_number }}",
+              "GITHUB_SHA": "${{ github.sha }}",
+              "GITHUB_REF": "${{ github.ref }}",
+              "GITHUB_REPOSITORY": "${{ github.repository }}"
+            }
+          
+          # Comprehensive tagging
+          tags: |
+            {
+              "ModelType": "CustomPython",
+              "Framework": "ScikitLearn",
+              "ModelName": "${{ github.event.inputs.model_name || 'sklearn-model' }}",
+              "Repository": "${{ github.repository }}",
+              "CommitSHA": "${{ github.sha }}",
+              "Branch": "${{ github.ref_name }}",
+              "GitHubActor": "${{ github.actor }}",
+              "BuildNumber": "${{ github.run_number }}",
+              "ContainerImage": "${{ steps.build-image.outputs.image }}",
+              "Environment": "Development",
+              "Team": "MLOps"
+            }
+          
+          # Monitor training progress
+          wait-for-completion: true
+          check-interval: 30
+      
+      - name: Validate training results
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          echo "🎉 Custom Python model training completed successfully!"
+          echo ""
+          echo "📊 Training Summary:"
+          echo "  Model Name: ${{ github.event.inputs.model_name || 'sklearn-model' }}"
+          echo "  Job Name: ${{ steps.training.outputs.job-name }}"
+          echo "  Status: ${{ steps.training.outputs.job-status }}"
+          echo "  Model Artifacts: ${{ steps.training.outputs.model-artifacts }}"
+          echo "  Container Image: ${{ steps.training.outputs.training-image }}"
+          echo ""
+          echo "🔍 Next Steps:"
+          echo "  1. Download and test model artifacts"
+          echo "  2. Create SageMaker endpoint for inference"
+          echo "  3. Add to model registry"
+          echo "  4. Set up model monitoring"
+      
+      - name: Download and inspect model artifacts
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          # Download model artifacts
+          aws s3 cp ${{ steps.training.outputs.model-artifacts }} model.tar.gz
+          
+          # Extract and inspect
+          tar -xzf model.tar.gz
+          
+          echo "📁 Model Artifacts Contents:"
+          ls -la
+          
+          # Check if metadata exists
+          if [ -f "model_metadata.json" ]; then
+            echo "📋 Model Metadata:"
+            cat model_metadata.json | jq '.'
+          fi
+          
+          # List model files
+          echo "🤖 Model Files:"
+          find . -name "*.joblib" -o -name "*.pkl" -o -name "*.json"
+      
+      - name: Create model deployment template
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          cat > model-deployment.json << EOF
+          {
+            "model_name": "${{ github.event.inputs.model_name || 'sklearn-model' }}",
+            "training_job_name": "${{ steps.training.outputs.job-name }}",
+            "model_artifacts_s3_uri": "${{ steps.training.outputs.model-artifacts }}",
+            "container_image": "${{ steps.build-image.outputs.image }}",
+            "instance_type": "ml.t2.medium",
+            "initial_instance_count": 1,
+            "github_sha": "${{ github.sha }}",
+            "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          
+          echo "📄 Deployment template created:"
+          cat model-deployment.json | jq '.'
+      
+      - name: Upload deployment artifacts
+        if: steps.training.outputs.job-status == 'Completed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-deployment-${{ github.event.inputs.model_name || 'sklearn-model' }}
+          path: |
+            model-deployment.json
+            model_metadata.json
+            *.joblib
+      
+      - name: Handle training failure
+        if: steps.training.outputs.job-status != 'Completed'
+        run: |
+          echo "❌ Custom Python model training failed!"
+          echo "Status: ${{ steps.training.outputs.job-status }}"
+          echo "Job Name: ${{ steps.training.outputs.job-name }}"
+          echo ""
+          echo "🔍 Troubleshooting steps:"
+          echo "  1. Check CloudWatch logs for the training job"
+          echo "  2. Verify training data format and S3 paths"
+          echo "  3. Check Docker image and Python script"
+          echo "  4. Validate hyperparameters and instance resources"
+          
+          # Get CloudWatch log group info
+          echo ""
+          echo "📋 CloudWatch Logs:"
+          echo "  Log Group: /aws/sagemaker/TrainingJobs"
+          echo "  Log Stream: ${{ steps.training.outputs.job-name }}/algo-1-*"
+          
+          exit 1
+      
+      - name: Summary report
+        if: always()
+        run: |
+          cat << 'EOF'
+          # 🚀 Custom Python Training Summary
+          
+          ## Training Configuration
+          - **Model**: ${{ github.event.inputs.model_name || 'sklearn-model' }}
+          - **Data Path**: ${{ github.event.inputs.data_path || 's3://my-ml-bucket/datasets/custom-data/' }}
+          - **Container**: ${{ steps.build-image.outputs.image }}
+          - **Job Status**: ${{ steps.training.outputs.job-status }}
+          
+          ## Custom Features Implemented
+          ✅ Custom Python training script with scikit-learn
+          ✅ Flexible data loading (CSV support)
+          ✅ Hyperparameter configuration
+          ✅ Model evaluation and metrics
+          ✅ Custom inference script
+          ✅ Model metadata generation
+          ✅ Comprehensive logging
+          
+          ## Key Benefits
+          - Complete control over training logic
+          - Custom preprocessing and feature engineering
+          - Flexible model architectures
+          - Easy integration with existing ML pipelines
+          - Production-ready inference endpoints
+          EOF

@@ -1,0 +1,93 @@
+{
+  "valid_basic_input": {
+    "job-name": "test-training-job",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "instance-type": "ml.m5.large",
+    "instance-count": "1",
+    "volume-size": "30",
+    "max-runtime": "86400",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://my-bucket/training-data/\"}}}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://my-bucket/output/\"}",
+    "hyperparameters": "{\"max_depth\": \"5\", \"eta\": \"0.1\", \"num_round\": \"100\"}",
+    "environment": "{\"SAGEMAKER_PROGRAM\": \"train.py\"}",
+    "tags": "{\"Project\": \"MLOps\", \"Environment\": \"Development\"}",
+    "wait-for-completion": "true",
+    "check-interval": "60",
+    "aws-region": "us-east-1"
+  },
+  
+  "valid_custom_container": {
+    "job-name": "custom-algorithm-job",
+    "algorithm-specification": "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-custom-algorithm:v1.0.0",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "instance-type": "ml.c5.xlarge",
+    "instance-count": "2",
+    "volume-size": "100",
+    "max-runtime": "172800",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://ml-data-bucket/datasets/training/\"}}, \"ContentType\": \"text/csv\", \"CompressionType\": \"Gzip\"}, {\"ChannelName\": \"validation\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://ml-data-bucket/datasets/validation/\"}}, \"ContentType\": \"text/csv\"}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://ml-output-bucket/models/\", \"KmsKeyId\": \"arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012\"}",
+    "hyperparameters": "{\"learning_rate\": \"0.01\", \"batch_size\": \"32\", \"epochs\": \"100\", \"dropout_rate\": \"0.2\"}",
+    "environment": "{\"SAGEMAKER_PROGRAM\": \"train.py\", \"SAGEMAKER_REQUIREMENTS\": \"requirements.txt\", \"MODEL_VERSION\": \"v1.0.0\"}",
+    "tags": "{\"Team\": \"DataScience\", \"CostCenter\": \"ML-R&D\", \"Environment\": \"Production\"}",
+    "wait-for-completion": "false",
+    "aws-region": "us-west-2"
+  },
+  
+  "valid_with_vpc": {
+    "job-name": "secure-training-job",
+    "algorithm-specification": "382416733822.dkr.ecr.eu-west-1.amazonaws.com/scikit-learn:0.23-1-cpu-py3",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerVPCExecutionRole",
+    "instance-type": "ml.m5.2xlarge",
+    "instance-count": "1",
+    "volume-size": "50",
+    "max-runtime": "43200",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://secure-ml-bucket/training-data/\"}}, \"InputMode\": \"File\"}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://secure-ml-bucket/output/\"}",
+    "hyperparameters": "{\"n_estimators\": \"100\", \"max_depth\": \"10\", \"random_state\": \"42\"}",
+    "environment": "{\"SAGEMAKER_PROGRAM\": \"sklearn_train.py\"}",
+    "vpc-config": "{\"SecurityGroupIds\": [\"sg-12345678\", \"sg-87654321\"], \"Subnets\": [\"subnet-12345678\", \"subnet-87654321\"]}",
+    "tags": "{\"SecurityLevel\": \"High\", \"Compliance\": \"GDPR\"}",
+    "wait-for-completion": "true",
+    "check-interval": "120",
+    "aws-region": "eu-west-1"
+  },
+  
+  "minimal_required": {
+    "job-name": "minimal-job",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/linear-learner:latest",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://my-bucket/data/\"}}}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://my-bucket/output/\"}"
+  },
+  
+  "invalid_missing_required": {
+    "job-name": "incomplete-job",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest"
+  },
+  
+  "invalid_job_name": {
+    "job-name": "job_with_invalid_characters!!!",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://my-bucket/data/\"}}}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://my-bucket/output/\"}"
+  },
+  
+  "invalid_instance_type": {
+    "job-name": "test-job",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "instance-type": "t2.micro",
+    "input-data-config": "[{\"ChannelName\": \"training\", \"DataSource\": {\"S3DataSource\": {\"S3DataType\": \"S3Prefix\", \"S3Uri\": \"s3://my-bucket/data/\"}}}]",
+    "output-data-config": "{\"S3OutputPath\": \"s3://my-bucket/output/\"}"
+  },
+  
+  "invalid_json_config": {
+    "job-name": "test-job",
+    "algorithm-specification": "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest",
+    "role-arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+    "input-data-config": "{invalid json syntax}",
+    "output-data-config": "{\"S3OutputPath\": \"s3://my-bucket/output/\"}"
+  }
+}

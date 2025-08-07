@@ -1,0 +1,278 @@
+name: Hyperparameter Optimization Training
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+  workflow_dispatch:
+    inputs:
+      max_jobs:
+        description: 'Maximum number of training jobs'
+        required: false
+        default: '20'
+      max_parallel:
+        description: 'Maximum parallel training jobs'
+        required: false
+        default: '5'
+
+jobs:
+  hyperparameter-tuning:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
+    strategy:
+      matrix:
+        experiment: [
+          {
+            name: "depth-eta-optimization",
+            hyperparameters: {
+              "max_depth": ["3", "5", "7", "9"],
+              "eta": ["0.05", "0.1", "0.2", "0.3"]
+            }
+          },
+          {
+            name: "regularization-optimization", 
+            hyperparameters: {
+              "alpha": ["0", "0.1", "1", "10"],
+              "lambda": ["0", "0.1", "1", "10"]
+            }
+          }
+        ]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: us-east-1
+      
+      - name: Generate hyperparameter combinations
+        id: generate-params
+        run: |
+          # Python script to generate all combinations
+          python3 << 'EOF'
+          import json
+          import itertools
+          
+          hyperparams = ${{ toJson(matrix.experiment.hyperparameters) }}
+          
+          # Generate all combinations
+          keys = list(hyperparams.keys())
+          values = list(hyperparams.values())
+          combinations = list(itertools.product(*values))
+          
+          # Create list of parameter sets
+          param_sets = []
+          for i, combo in enumerate(combinations[:int("${{ github.event.inputs.max_jobs || '20' }}")]):
+              param_dict = dict(zip(keys, combo))
+              param_dict["combination_id"] = str(i)
+              param_sets.append(param_dict)
+          
+          print(f"::set-output name=param_sets::{json.dumps(param_sets)}")
+          print(f"Generated {len(param_sets)} parameter combinations")
+          EOF
+      
+      - name: Train models with different hyperparameters
+        id: batch-training
+        run: |
+          param_sets='${{ steps.generate-params.outputs.param_sets }}'
+          
+          # Process parameter sets in batches
+          echo "$param_sets" | jq -c '.[]' | while read params; do
+            combo_id=$(echo "$params" | jq -r '.combination_id')
+            
+            # Remove combination_id from params for training
+            training_params=$(echo "$params" | jq 'del(.combination_id)')
+            
+            echo "Starting training for combination $combo_id"
+            
+            # Use the SageMaker Training Action for each combination
+            job_name="${{ matrix.experiment.name }}-combo-${combo_id}-${{ github.run_number }}"
+            
+            echo "Training with parameters: $training_params"
+            
+            # Note: In a real workflow, you'd call the action here
+            # For this example, we'll simulate the training
+            
+            sleep 2  # Simulate some processing time
+          done
+      
+      # Actual training job for the best performing combination from previous runs
+      - name: Train optimized model
+        id: optimized-training
+        uses: your-org/sagemaker-training-action@v1
+        with:
+          job-name: optimized-${{ matrix.experiment.name }}-${{ github.run_number }}
+          algorithm-specification: 382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest
+          role-arn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
+          instance-type: ml.m5.2xlarge
+          instance-count: 1
+          volume-size: 50
+          max-runtime: 7200  # 2 hours
+          
+          input-data-config: |
+            [{
+              "ChannelName": "training",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-bucket/datasets/large-dataset/train/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "text/csv",
+              "CompressionType": "Gzip",
+              "InputMode": "File"
+            }, {
+              "ChannelName": "validation",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-bucket/datasets/large-dataset/validation/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "text/csv",
+              "CompressionType": "Gzip",
+              "InputMode": "File"
+            }]
+          
+          output-data-config: |
+            {
+              "S3OutputPath": "s3://my-ml-bucket/optimized-models/${{ matrix.experiment.name }}/"
+            }
+          
+          # Best hyperparameters found from previous tuning
+          hyperparameters: |
+            {
+              "max_depth": "6",
+              "eta": "0.15",
+              "gamma": "2",
+              "min_child_weight": "3",
+              "subsample": "0.8",
+              "colsample_bytree": "0.8",
+              "alpha": "0.1",
+              "lambda": "1",
+              "num_round": "200",
+              "objective": "binary:logistic",
+              "eval_metric": "auc",
+              "early_stopping_rounds": "20"
+            }
+          
+          environment: |
+            {
+              "SAGEMAKER_PROGRAM": "train.py",
+              "EXPERIMENT_NAME": "${{ matrix.experiment.name }}",
+              "GITHUB_RUN_ID": "${{ github.run_id }}",
+              "OPTIMIZATION_METRIC": "validation:auc"
+            }
+          
+          tags: |
+            {
+              "ExperimentType": "HyperparameterOptimization",
+              "ExperimentName": "${{ matrix.experiment.name }}",
+              "OptimizationRound": "final",
+              "Repository": "${{ github.repository }}",
+              "RunID": "${{ github.run_id }}",
+              "Scheduler": "github-actions-cron"
+            }
+          
+          wait-for-completion: true
+          check-interval: 120
+      
+      - name: Evaluate model performance
+        if: steps.optimized-training.outputs.job-status == 'Completed'
+        run: |
+          # Download and evaluate the trained model
+          aws s3 cp ${{ steps.optimized-training.outputs.model-artifacts }} model.tar.gz
+          tar -xzf model.tar.gz
+          
+          # Run evaluation script (you'd implement this)
+          python evaluate_model.py --model-path ./model \
+                                 --test-data s3://my-ml-bucket/datasets/large-dataset/test/ \
+                                 --output-path evaluation_results.json
+          
+          # Upload results
+          aws s3 cp evaluation_results.json s3://my-ml-bucket/evaluations/${{ matrix.experiment.name }}/
+      
+      - name: Update experiment tracking
+        if: always()
+        run: |
+          # Log experiment results to MLflow or similar
+          python3 << 'EOF'
+          import json
+          import boto3
+          
+          # Create experiment record
+          experiment_data = {
+              "experiment_name": "${{ matrix.experiment.name }}",
+              "training_job": "${{ steps.optimized-training.outputs.job-name }}",
+              "status": "${{ steps.optimized-training.outputs.job-status }}",
+              "model_artifacts": "${{ steps.optimized-training.outputs.model-artifacts }}",
+              "github_run_id": "${{ github.run_id }}",
+              "commit_sha": "${{ github.sha }}",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          
+          # Save to S3 for experiment tracking
+          s3 = boto3.client('s3')
+          s3.put_object(
+              Bucket='my-ml-bucket',
+              Key=f'experiments/${{ matrix.experiment.name }}/${{ github.run_id }}.json',
+              Body=json.dumps(experiment_data, indent=2),
+              ContentType='application/json'
+          )
+          
+          print("Experiment data saved to S3")
+          EOF
+      
+      - name: Create performance summary
+        run: |
+          cat << 'EOF' > experiment_summary.md
+          # Hyperparameter Optimization Results
+          
+          ## Experiment: ${{ matrix.experiment.name }}
+          
+          - **Training Job**: ${{ steps.optimized-training.outputs.job-name }}
+          - **Status**: ${{ steps.optimized-training.outputs.job-status }}
+          - **Model Artifacts**: ${{ steps.optimized-training.outputs.model-artifacts }}
+          - **GitHub Run**: ${{ github.run_id }}
+          - **Commit**: ${{ github.sha }}
+          
+          ## Hyperparameters Tested
+          
+          ```json
+          ${{ toJson(matrix.experiment.hyperparameters) }}
+          ```
+          
+          ## Next Steps
+          
+          - [ ] Validate model performance on test set
+          - [ ] Compare with baseline models
+          - [ ] Deploy to staging environment if metrics improve
+          - [ ] Update model registry
+          
+          EOF
+          
+          echo "EXPERIMENT_SUMMARY<<EOF" >> $GITHUB_ENV
+          cat experiment_summary.md >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+      
+      - name: Post experiment summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = process.env.EXPERIMENT_SUMMARY;
+            await github.rest.actions.createWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: context.workflow,
+              ref: context.ref
+            });
+            
+            // You could also create an issue or PR comment with results
+            console.log("Experiment Summary:", summary);

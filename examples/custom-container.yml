@@ -1,0 +1,223 @@
+name: Custom Container Training
+
+on:
+  push:
+    paths:
+      - 'docker/**'
+      - 'src/**'
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version tag'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: my-custom-algorithm
+
+jobs:
+  build-and-train:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Docker image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./docker/
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./docker/
+          
+          # Push to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Output image URI
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+      
+      - name: Train model with custom container
+        id: training
+        uses: your-org/sagemaker-training-action@v1
+        with:
+          job-name: custom-model-${{ github.run_number }}-${{ github.sha }}
+          algorithm-specification: ${{ steps.build-image.outputs.image }}
+          role-arn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
+          
+          # Use high-performance instances for custom training
+          instance-type: ml.c5.4xlarge
+          instance-count: 2
+          volume-size: 100
+          max-runtime: 14400  # 4 hours
+          
+          # Multiple data channels
+          input-data-config: |
+            [{
+              "ChannelName": "training",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-data-bucket/processed/training/",
+                  "S3DataDistributionType": "ShardedByS3Key"
+                }
+              },
+              "ContentType": "application/x-parquet",
+              "CompressionType": "Gzip",
+              "InputMode": "File"
+            }, {
+              "ChannelName": "validation",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-data-bucket/processed/validation/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/x-parquet",
+              "CompressionType": "Gzip",
+              "InputMode": "File"
+            }, {
+              "ChannelName": "config",
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://my-ml-config-bucket/model-configs/"
+                }
+              },
+              "ContentType": "application/json",
+              "InputMode": "File"
+            }]
+          
+          # Encrypted output
+          output-data-config: |
+            {
+              "S3OutputPath": "s3://my-ml-models-bucket/custom-algorithm/${{ github.sha }}/",
+              "KmsKeyId": "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+            }
+          
+          # Custom algorithm hyperparameters
+          hyperparameters: |
+            {
+              "learning_rate": "0.001",
+              "batch_size": "64",
+              "num_epochs": "100",
+              "hidden_layers": "256,128,64",
+              "dropout_rate": "0.3",
+              "regularization": "0.001",
+              "optimizer": "adam",
+              "model_version": "${{ github.event.inputs.model_version || 'v1.0.0' }}"
+            }
+          
+          # Custom environment variables
+          environment: |
+            {
+              "SAGEMAKER_PROGRAM": "train.py",
+              "SAGEMAKER_REQUIREMENTS": "requirements.txt",
+              "PYTHONPATH": "/opt/ml/code:/opt/ml/src",
+              "MODEL_NAME": "custom_neural_network",
+              "MODEL_VERSION": "${{ github.event.inputs.model_version || 'v1.0.0' }}",
+              "GIT_COMMIT": "${{ github.sha }}",
+              "CUDA_VISIBLE_DEVICES": "0,1",
+              "NCCL_DEBUG": "INFO"
+            }
+          
+          # Comprehensive tagging
+          tags: |
+            {
+              "Project": "CustomMLAlgorithm",
+              "Team": "DataScience",
+              "Environment": "Production",
+              "Repository": "${{ github.repository }}",
+              "Branch": "${{ github.ref_name }}",
+              "CommitSHA": "${{ github.sha }}",
+              "GitHubActor": "${{ github.actor }}",
+              "BuildNumber": "${{ github.run_number }}",
+              "ModelVersion": "${{ github.event.inputs.model_version || 'v1.0.0' }}",
+              "ContainerImage": "${{ steps.build-image.outputs.image }}",
+              "CostCenter": "ML-Research",
+              "Owner": "ml-team@company.com"
+            }
+          
+          # Wait for completion to get artifacts
+          wait-for-completion: true
+          check-interval: 60
+      
+      - name: Validate training results
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          echo "✅ Training completed successfully!"
+          echo "📊 Training Details:"
+          echo "  - Job Name: ${{ steps.training.outputs.job-name }}"
+          echo "  - Job Status: ${{ steps.training.outputs.job-status }}"
+          echo "  - Model Artifacts: ${{ steps.training.outputs.model-artifacts }}"
+          echo "  - Container Image: ${{ steps.training.outputs.training-image }}"
+          
+          # You could add model validation logic here
+          # For example, download and test the model artifacts
+      
+      - name: Handle training failure
+        if: steps.training.outputs.job-status != 'Completed'
+        run: |
+          echo "❌ Training failed with status: ${{ steps.training.outputs.job-status }}"
+          echo "🔍 Check CloudWatch logs for details"
+          echo "📋 Training job: ${{ steps.training.outputs.job-name }}"
+          exit 1
+      
+      - name: Create model registry entry
+        if: steps.training.outputs.job-status == 'Completed'
+        run: |
+          # Create a model package for SageMaker Model Registry
+          aws sagemaker create-model-package \
+            --model-package-group-name "custom-algorithm-models" \
+            --model-package-description "Custom algorithm model trained with commit ${{ github.sha }}" \
+            --inference-specification '{
+              "Containers": [{
+                "Image": "${{ steps.build-image.outputs.image }}",
+                "ModelDataUrl": "${{ steps.training.outputs.model-artifacts }}"
+              }],
+              "SupportedContentTypes": ["application/json"],
+              "SupportedResponseMIMETypes": ["application/json"]
+            }' \
+            --model-metrics '{
+              "ModelQuality": {
+                "Statistics": {
+                  "ContentType": "application/json",
+                  "S3Uri": "s3://my-ml-models-bucket/metrics/${{ github.sha }}/metrics.json"
+                }
+              }
+            }' \
+            --tags Key=GitHubCommit,Value=${{ github.sha }} \
+                   Key=ModelVersion,Value=${{ github.event.inputs.model_version || 'v1.0.0' }} \
+                   Key=TrainingJob,Value=${{ steps.training.outputs.job-name }}
+      
+      - name: Notify team
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Custom model training ${{ job.status }}!
+            Job: ${{ steps.training.outputs.job-name }}
+            Status: ${{ steps.training.outputs.job-status }}
+            Commit: ${{ github.sha }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

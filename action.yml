@@ -1,0 +1,114 @@
+name: 'SageMaker Training Job'
+description: 'Setup and trigger training jobs on Amazon SageMaker'
+author: 'Your Organization'
+branding:
+  icon: 'cloud'
+  color: 'orange'
+
+inputs:
+  # AWS Authentication
+  aws-access-key-id:
+    description: 'AWS Access Key ID'
+    required: false
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key'
+    required: false
+  aws-session-token:
+    description: 'AWS Session Token'
+    required: false
+  aws-region:
+    description: 'AWS Region'
+    required: true
+    default: 'us-east-1'
+  role-to-assume:
+    description: 'AWS IAM Role ARN to assume (for OIDC)'
+    required: false
+  
+  # SageMaker Training Configuration
+  job-name:
+    description: 'SageMaker training job name'
+    required: true
+  algorithm-specification:
+    description: 'Training image URI or built-in algorithm name'
+    required: true
+  role-arn:
+    description: 'SageMaker execution role ARN'
+    required: true
+  instance-type:
+    description: 'ML compute instance type'
+    required: true
+    default: 'ml.m5.large'
+  instance-count:
+    description: 'Number of ML compute instances'
+    required: false
+    default: '1'
+  volume-size:
+    description: 'Size of ML storage volume in GB'
+    required: false
+    default: '30'
+  max-runtime:
+    description: 'Maximum runtime in seconds'
+    required: false
+    default: '86400'
+  
+  # Data Configuration
+  input-data-config:
+    description: 'JSON string of input data configuration'
+    required: true
+  output-data-config:
+    description: 'JSON string of output data configuration'
+    required: true
+  
+  # Hyperparameters
+  hyperparameters:
+    description: 'JSON string of hyperparameters'
+    required: false
+    default: '{}'
+  
+  # Environment Variables
+  environment:
+    description: 'JSON string of environment variables'
+    required: false
+    default: '{}'
+  
+  # Networking
+  vpc-config:
+    description: 'JSON string of VPC configuration'
+    required: false
+  
+  # Tags
+  tags:
+    description: 'JSON string of resource tags'
+    required: false
+    default: '{}'
+  
+  # Job Control
+  wait-for-completion:
+    description: 'Wait for training job to complete'
+    required: false
+    default: 'true'
+  check-interval:
+    description: 'Status check interval in seconds'
+    required: false
+    default: '60'
+
+outputs:
+  job-name:
+    description: 'The SageMaker training job name'
+  job-arn:
+    description: 'The SageMaker training job ARN'
+  job-status:
+    description: 'Final status of the training job'
+  model-artifacts:
+    description: 'S3 URI of the model artifacts'
+  training-image:
+    description: 'Training container image used'
+  training-job-definition:
+    description: 'Complete training job definition as JSON'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  env:
+    AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
+  entrypoint: '/entrypoint.sh'
