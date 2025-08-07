@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/sagemaker-training-action"
+    "url": "https://github.com/vertex-ml/sagemaker-training"
   },
   "keywords": [
     "github-action",
@@ -22,7 +22,7 @@
     "training",
     "mlops"
   ],
-  "author": "Your Organization",
+  "author": "vertex-ml",
   "license": "MIT",
   "devDependencies": {},
   "dependencies": {},

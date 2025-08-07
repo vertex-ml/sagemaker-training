@@ -1,7 +1,7 @@
 # SageMaker Training Action
 
 [![GitHub Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-SageMaker%20Training-blue?logo=github)](https://github.com/marketplace/actions/sagemaker-training-action)
-[![Tests](https://github.com/your-org/sagemaker-training-action/workflows/Tests/badge.svg)](https://github.com/your-org/sagemaker-training-action/actions)
+[![Tests](https://github.com/vertex-ml/sagemaker-training/workflows/Tests/badge.svg)](https://github.com/vertex-ml/sagemaker-training/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A comprehensive GitHub Action for setting up and triggering Amazon SageMaker training jobs with full MLOps integration support.
@@ -393,7 +393,7 @@ Enable debug logging by setting the repository variable `ACTIONS_RUNNER_DEBUG` t
 
 - Check [troubleshooting guide](docs/troubleshooting.md)
 - Review [AWS SageMaker documentation](https://docs.aws.amazon.com/sagemaker/)
-- Open an [issue](https://github.com/your-org/sagemaker-training-action/issues) for bugs or feature requests
+- Open an [issue](https://github.com/vertex-ml/sagemaker-training/issues) for bugs or feature requests
 
 ## 🤝 Contributing
 
@@ -412,13 +412,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🏷️ Versioning
 
-We use [Semantic Versioning](http://semver.org/) for versioning. For available versions, see the [releases on this repository](https://github.com/your-org/sagemaker-training-action/releases).
+We use [Semantic Versioning](http://semver.org/) for versioning. For available versions, see the [releases on this repository](https://github.com/vertex-ml/sagemaker-training/releases).
 
 ## 📞 Support
 
 - **Documentation**: [GitHub Pages](https://your-org.github.io/sagemaker-training-action/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/sagemaker-training-action/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/sagemaker-training-action/discussions)
+- **Issues**: [GitHub Issues](https://github.com/vertex-ml/sagemaker-training/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/vertex-ml/sagemaker-training/discussions)
 
 ---
 

@@ -1,6 +1,6 @@
 name: 'SageMaker Training Job'
 description: 'Setup and trigger training jobs on Amazon SageMaker'
-author: 'Your Organization'
+author: 'vertex-ml'
 branding:
   icon: 'cloud'
   color: 'orange'

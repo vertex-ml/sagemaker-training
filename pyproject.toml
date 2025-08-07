@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sagemaker-training-action"
 version = "1.0.0"
 description = "GitHub Action for Amazon SageMaker training jobs"
-authors = [{name = "Your Organization", email = "contact@yourorg.com"}]
+authors = [{name = "vertex-ml", email = "vertexml@outlook.com"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8"
@@ -51,11 +51,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/sagemaker-training-action"
+Homepage = "https://github.com/vertex-ml/sagemaker-training"
 Documentation = "https://your-org.github.io/sagemaker-training-action/"
-Repository = "https://github.com/your-org/sagemaker-training-action"
-"Bug Tracker" = "https://github.com/your-org/sagemaker-training-action/issues"
-Changelog = "https://github.com/your-org/sagemaker-training-action/releases"
+Repository = "https://github.com/vertex-ml/sagemaker-training"
+"Bug Tracker" = "https://github.com/vertex-ml/sagemaker-training/issues"
+Changelog = "https://github.com/vertex-ml/sagemaker-training/releases"
 
 [tool.black]
 line-length = 120

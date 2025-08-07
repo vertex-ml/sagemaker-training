@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/your-org/sagemaker-training-action/schema/input-schema.json",
+  "$id": "https://github.com/vertex-ml/sagemaker-training/schema/input-schema.json",
   "title": "SageMaker Training Action Input Schema",
   "description": "Schema for validating inputs to the SageMaker Training GitHub Action",
   "type": "object",
